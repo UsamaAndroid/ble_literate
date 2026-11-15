@@ -1,13 +1,31 @@
 allprojects {
     repositories {
+        // General Android / Maven deps first (Aliyun)
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
         google()
         mavenCentral()
+
+        // Flutter engine artifacts (after central so Kotlin/etc. resolve correctly)
+        maven { url 'https://storage.flutter-io.cn/download.flutter.io' }
+        maven { url 'https://storage.googleapis.com/download.flutter.io' }
     }
 }
 
 rootProject.buildDir = "../build"
-subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
+subprojects { subproject ->
+    subproject.buildDir = "${rootProject.buildDir}/${subproject.name}"
+
+    subproject.buildscript {
+        repositories {
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/central' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+            google()
+            mavenCentral()
+        }
+    }
 }
 subprojects {
     project.evaluationDependsOn(":app")
