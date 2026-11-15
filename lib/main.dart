@@ -1,125 +1,142 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:universal_ble/universal_ble.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const BleTestApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class BleTestApp extends StatelessWidget {
+  const BleTestApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'BLE Test',
+      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+      home: const ScanScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class ScanScreen extends StatefulWidget {
+  const ScanScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _ScanScreenState extends State<ScanScreen> {
+  static const _targetName = 'SkinCare-Sim';
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  // Keyed by deviceId so the same device isn't added twice
+  final Map<String, BleDevice> _devices = {};
+  StreamSubscription<BleDevice>? _scanSub;
+  Timer? _scanTimer;
+  bool _isScanning = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _scanSub = UniversalBle.scanStream.listen((device) {
+      // Skip unnamed devices to keep the list readable
+      if ((device.name ?? '').isEmpty) return;
+      setState(() => _devices[device.deviceId] = device);
     });
+  }
+
+  Future<void> _startScan() async {
+    setState(() {
+      _devices.clear();
+      _error = null;
+    });
+
+    try {
+      final state = await UniversalBle.getBluetoothAvailabilityState();
+      if (state != AvailabilityState.poweredOn) {
+        setState(() => _error = 'Please turn on Bluetooth');
+        return;
+      }
+
+      // await UniversalBle.startScan(
+      //   platformConfig: PlatformConfig(
+      //     // ESP32 uses legacy (BLE 4.x) advertising
+      //     android: AndroidOptions(legacy: true),
+      //   ),
+      // );
+      await UniversalBle.startScan();
+      setState(() => _isScanning = true);
+
+      // Stop automatically after 10 seconds to save battery
+      _scanTimer = Timer(const Duration(seconds: 10), _stopScan);
+    } catch (e) {
+      setState(() => _error = 'Scan failed: $e');
+    }
+  }
+
+  Future<void> _stopScan() async {
+    _scanTimer?.cancel();
+    await UniversalBle.stopScan();
+    if (mounted) setState(() => _isScanning = false);
+  }
+
+  @override
+  void dispose() {
+    _scanTimer?.cancel();
+    _scanSub?.cancel();
+    UniversalBle.stopScan();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    final devices = _devices.values.toList();
+
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+      appBar: AppBar(title: const Text('BLE Scanner')),
+      body: Column(
+        children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          if (_isScanning) const LinearProgressIndicator(),
+          Expanded(
+            child: devices.isEmpty
+                ? const Center(child: Text('Tap Scan to find devices'))
+                : ListView.builder(
+              itemCount: devices.length,
+              itemBuilder: (context, index) {
+                final device = devices[index];
+                final isTarget = device.name == _targetName;
+                return ListTile(
+                  leading: Icon(
+                    Icons.bluetooth,
+                    color: isTarget ? Colors.teal : null,
+                  ),
+                  title: Text(
+                    device.name ?? 'Unknown',
+                    style: TextStyle(
+                      fontWeight:
+                      isTarget ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  subtitle: Text(device.deviceId),
+                  trailing: Text('${device.rssi} dBm'),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isScanning ? _stopScan : _startScan,
+        icon: Icon(_isScanning ? Icons.stop : Icons.search),
+        label: Text(_isScanning ? 'Stop' : 'Scan'),
+      ),
     );
   }
 }
