@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dermo_ble/device_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:universal_ble/universal_ble.dart';
 
@@ -124,8 +125,16 @@ class _ScanScreenState extends State<ScanScreen> {
                       isTarget ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
-                  subtitle: Text(device.deviceId),
-                  trailing: Text('${device.rssi} dBm'),
+                  subtitle: Text(device.deviceId),trailing: Text('${device.rssi} dBm'),
+                  onTap: () async {
+                    await _stopScan();
+                    if (!context.mounted) return;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DeviceScreen(device: device),
+                      ),
+                    );
+                  },
                 );
               },
             ),
